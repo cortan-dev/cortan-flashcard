@@ -3,54 +3,25 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-// We test the session store logic in isolation
-// by extracting it from index.js or duplicating the pure functions here
+// Override sessions file path for tests
+const TEST_SESSIONS_FILE = path.join(__dirname, '../data/test-sessions.json');
+process.env.SESSIONS_FILE = TEST_SESSIONS_FILE;
 
-const SESSIONS_FILE = path.join(__dirname, '../data/test-sessions.json');
-
-// Inline the session store helpers for testing
-function loadSessions() {
-  if (!fs.existsSync(SESSIONS_FILE)) return {};
-  return JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
-}
-function saveSessions(sessions) {
-  fs.mkdirSync(path.dirname(SESSIONS_FILE), { recursive: true });
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-}
-function updateSession(id, data) {
-  const sessions = loadSessions();
-  sessions[id] = { ...sessions[id], ...data };
-  saveSessions(sessions);
-  return sessions[id];
-}
-function getSession(id) {
-  return loadSessions()[id] || null;
-}
-function buildSummaryData(session) {
-  const scores = session.scores || [];
-  const correct = scores.filter(s => s?.correct).length;
-  const total = session.cards.length;
-  const scorePercent = total > 0 ? Math.round((correct / total) * 100) : 0;
-  const weakCards = session.cards.filter((_, i) => !scores[i]?.correct);
-  return { sessionId: session.sessionId, correct, total, scorePercent, weakCards };
-}
+const { getSession, updateSession, buildSummaryData } = require('../src/sessionStore');
 
 describe('Session Store', () => {
   const testId = 'test-session-001';
 
   before(() => {
-    fs.mkdirSync(path.join(__dirname, '../data'), { recursive: true });
-    // Clean up any leftover test session
-    const sessions = loadSessions();
-    delete sessions[testId];
-    saveSessions(sessions);
+    if (fs.existsSync(TEST_SESSIONS_FILE)) {
+      fs.unlinkSync(TEST_SESSIONS_FILE);
+    }
   });
 
   after(() => {
-    // Clean up test session
-    const sessions = loadSessions();
-    delete sessions[testId];
-    saveSessions(sessions);
+    if (fs.existsSync(TEST_SESSIONS_FILE)) {
+      fs.unlinkSync(TEST_SESSIONS_FILE);
+    }
   });
 
   it('creates and retrieves a session', () => {
