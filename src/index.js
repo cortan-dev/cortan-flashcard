@@ -20,6 +20,14 @@ receiver.router.post('/deck/create', async (req, res) => {
   if (!channel || !cards || !Array.isArray(cards)) {
     return res.status(400).json({ error: 'Missing channel or cards' });
   }
+
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    if (!card.question || typeof card.question !== "string" || card.question.trim() === "" ||
+        !card.answer || typeof card.answer !== "string" || card.answer.trim() === "") {
+      return res.status(400).json({ error: "Card at index " + i + " is malformed. Both question and answer must be non-empty strings." });
+    }
+  }
   const sessionId = uuidv4();
   try {
     const result = await app.client.chat.postMessage({
@@ -29,9 +37,9 @@ receiver.router.post('/deck/create', async (req, res) => {
     });
     const threadTs = result.ts;
     const session = updateSession(sessionId, {
-      sessionId, channel, threadTs, title, cards, currentIndex: 0, scores: []
+      sessionId, channel, threadTs, title, cards, currentIndex: 0, scores: [], completed: false
     });
-    await postCard(sessionId, session);
+    await postCard(session);
     res.json({ sessionId, threadTs });
   } catch (error) {
     console.error('Error creating deck:', error);
@@ -44,6 +52,10 @@ receiver.router.post('/deck/:sessionId/score', async (req, res) => {
   const { correct, feedback = "" } = req.body;
   const session = getSession(sessionId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.completed) {
+    return res.status(400).json({ error: "Session already completed" });
+  }
+
   const currentCard = session.cards[session.currentIndex];
   try {
     await app.client.chat.postMessage({
@@ -59,10 +71,10 @@ receiver.router.post('/deck/:sessionId/score', async (req, res) => {
       }]
     });
     const scores = session.scores || [];
-    scores.push({ correct });
+    scores.push({ correct: !!correct });
     const updatedSession = updateSession(sessionId, { scores, currentIndex: session.currentIndex + 1 });
     if (updatedSession.currentIndex < updatedSession.cards.length) {
-      await postCard(sessionId, updatedSession);
+      await postCard(updatedSession);
     } else {
       await postSummary(sessionId, updatedSession);
     }
@@ -96,9 +108,9 @@ receiver.router.post('/deck/:sessionId/retry-weak', async (req, res) => {
     const threadTs = result.ts;
     const newSession = updateSession(newSessionId, {
       sessionId: newSessionId, channel: session.channel, threadTs, title: "Retry: " + session.title,
-      cards: [...summary.weakCards], currentIndex: 0, scores: []
+      cards: [...summary.weakCards], currentIndex: 0, scores: [], completed: false
     });
-    await postCard(newSessionId, newSession);
+    await postCard(newSession);
     res.json({ sessionId: newSessionId, threadTs });
   } catch (error) {
     console.error('Error retrying weak cards:', error);
@@ -106,7 +118,7 @@ receiver.router.post('/deck/:sessionId/retry-weak', async (req, res) => {
   }
 });
 
-async function postCard(sessionId, session) {
+async function postCard(session) {
   const card = session.cards[session.currentIndex];
   await app.client.chat.postMessage({
     channel: session.channel,
@@ -123,6 +135,7 @@ async function postCard(sessionId, session) {
 }
 
 async function postSummary(sessionId, session) {
+  updateSession(sessionId, { completed: true });
   const summary = buildSummaryData(session);
   const weakList = summary.weakCards.map(c => "• " + c.question).join("\n") || 'None!';
   await app.client.chat.postMessage({

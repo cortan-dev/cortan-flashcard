@@ -51,6 +51,12 @@ describe('Session Store', () => {
   it('returns null for unknown session', () => {
     assert.equal(getSession('nonexistent'), null);
   });
+
+  it('handles completed state', () => {
+    updateSession(testId, { completed: true });
+    const session = getSession(testId);
+    assert.equal(session.completed, true);
+  });
 });
 
 describe('buildSummaryData', () => {
