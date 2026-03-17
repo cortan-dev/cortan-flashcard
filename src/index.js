@@ -5,11 +5,11 @@ const { v4: uuidv4 } = require('uuid');
 const { getSession, updateSession, buildSummaryData } = require('./sessionStore');
 
 const receiver = new ExpressReceiver({
-  signingSecret: process.env.SLACK_SIGNING_SECRET || 'placeholder',
+  signingSecret: process.env.FLASHCARD_SLACK_SIGNING_SECRET || 'placeholder',
 });
 
 const app = new App({
-  token: process.env.SLACK_BOT_TOKEN || 'placeholder',
+  token: process.env.FLASHCARD_SLACK_BOT_TOKEN || 'placeholder',
   receiver,
 });
 
